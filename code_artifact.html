@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎀 나의 다이어리 & 투두 (클라우드 동기화)</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- SortableJS for drag & drop -->
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+    <!-- Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <!-- Canvas Confetti for celebratory particle effects -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    
+    <!-- Google Fonts: Jua -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        teen: {
+                            pink: '#FF8FAB',      /* 진한 딸기우유 */
+                            pinkLight: '#FFE5EC', /* 연한 딸기우유 */
+                            yellow: '#FCE181',    /* 바나나 옐로우 */
+                            yellowLight: '#FFF9D2',/* 버터 옐로우 */
+                            brown: '#5C4033',     /* 초코 브라운 */
+                            brownLight: '#8B6B6B',/* 밀크초코 */
+                            mint: '#B8E9C4',      /* 파스텔 민트 */
+                            white: '#FFFFFF',
+                        }
+                    },
+                    fontFamily: {
+                        jua: ['Jua', 'sans-serif'],
+                        sans: ['Jua', 'sans-serif'],
+                    },
+                    boxShadow: {
+                        'sticker': '4px 4px 0px #FF8FAB',
+                        'sticker-lg': '6px 6px 0px #FF8FAB',
+                        'sticker-hover': '2px 2px 0px #FF8FAB',
+                        'sticker-brown': '4px 4px 0px #5C4033',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body {
+            background: linear-gradient(135deg, theme('colors.teen.pinkLight') 50%, theme('colors.teen.yellowLight') 50%);
+            color: theme('colors.teen.brown');
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+            font-family: 'Jua', sans-serif;
+            letter-spacing: 0.5px;
+            user-select: none;
+        }
+
+        .app-container {
+            border: 4px solid theme('colors.teen.pink');
+            box-shadow: 8px 8px 0px theme('colors.teen.pink');
+            background-color: theme('colors.teen.white');
+        }
+        
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: theme('colors.teen.yellowLight'); border-radius: 10px; border: 2px solid theme('colors.teen.pinkLight'); }
+        ::-webkit-scrollbar-thumb { background: theme('colors.teen.pink'); border-radius: 10px; }
+
+        .todo-item {
+            border: 3px solid theme('colors.teen.pink');
+            box-shadow: 4px 4px 0px theme('colors.teen.pink');
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            background-color: theme('colors.teen.white');
+            margin-bottom: 12px;
+        }
+        .todo-item:hover {
+            transform: translate(-2px, -2px);
+            box-shadow: 6px 6px 0px theme('colors.teen.pink');
+        }
+        
+        .todo-item.completed {
+            background-color: theme('colors.teen.yellowLight');
+            border-color: theme('colors.teen.brownLight');
+            box-shadow: 4px 4px 0px theme('colors.teen.brownLight');
+            opacity: 0.85;
+        }
+        .todo-item.completed .todo-text {
+            color: theme('colors.teen.brownLight');
+            text-decoration: line-through;
+            text-decoration-thickness: 3px;
+            text-decoration-color: theme('colors.teen.pink');
+        }
+
+        .btn-sticker {
+            border: 2px solid theme('colors.teen.pink');
+            box-shadow: 2px 2px 0px theme('colors.teen.pink');
+            transition: all 0.1s;
+        }
+        .btn-sticker:active {
+            transform: translate(2px, 2px);
+            box-shadow: 0px 0px 0px theme('colors.teen.pink');
+        }
+
+        .drag-handle { cursor: grab; }
+        .drag-handle:active { cursor: grabbing; }
+        .sortable-ghost { opacity: 0.4; background: theme('colors.teen.yellow') !important; transform: scale(0.95); }
+
+        .calendar-day {
+            transition: all 0.2s;
+            cursor: pointer;
+            border: 2px solid transparent;
+        }
+        .calendar-day:hover {
+            border-color: theme('colors.teen.pinkLight');
+            transform: scale(1.08);
+        }
+        .calendar-day.selected {
+            background-color: theme('colors.teen.yellow');
+            border: 2px solid theme('colors.teen.pink');
+            box-shadow: 2px 2px 0px theme('colors.teen.pink');
+            color: theme('colors.teen.brown');
+            font-weight: bold;
+        }
+        .calendar-day.today {
+            background-color: theme('colors.teen.pinkLight');
+            border: 2px dashed theme('colors.teen.pink');
+        }
+        
+        .view-section { transition: opacity 0.25s ease, transform 0.25s ease; }
+        .hidden-view { opacity: 0; pointer-events: none; position: absolute; visibility: hidden; transform: scale(0.96); }
+        .active-view { opacity: 1; pointer-events: auto; position: relative; visibility: visible; transform: scale(1); }
+
+        /* Keyframe animations */
+        @keyframes pulseGlow {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.8; transform: scale(1.03); }
+        }
+        .pulse-effect { animation: pulseGlow 2s infinite; }
+    </style>
+</head>
+
+<body class="antialiased">
+
+    <main class="app-container w-full max-w-[440px] rounded-[2.5rem] overflow-hidden relative h-[860px] max-h-[92vh] flex flex-col">
+        
+        <!-- Top Navigation / Toggle & Sync Badge -->
+        <nav class="flex flex-col bg-teen-white border-b-4 border-teen-pink z-10">
+            <!-- Sync Status Bar -->
+            <div class="bg-teen-yellowLight px-4 py-1.5 flex justify-between items-center text-xs border-b-2 border-teen-pinkLight">
+                <div class="flex items-center gap-1.5" id="sync-status">
+                    <span class="w-2.5 h-2.5 rounded-full bg-yellow-400 animate-pulse" id="status-dot"></span>
+                    <span id="status-text" class="text-teen-brown font-bold">동기화 준비중...</span>
+                </div>
+                <button id="btn-sync-key" class="bg-white border border-teen-pink px-2 py-0.5 rounded-full text-teen-brown text-[11px] hover:bg-teen-pinkLight flex items-center gap-1">
+                    <i class="ph-bold ph-key text-teen-pink"></i> <span id="sync-code-display">동기화 키</span>
+                </button>
+            </div>
+
+            <!-- Header Title and View Switcher -->
+            <div class="flex items-center justify-between p-4 pb-3">
+                <h1 class="text-2xl text-teen-brown flex items-center gap-1" id="main-title">
+                    🧸 짝꿍 다이어리
+                </h1>
+                <div class="flex bg-teen-yellowLight border-2 border-teen-pink rounded-full p-1 shadow-sticker-hover">
+                    <button id="btn-list-view" class="p-2 px-3 rounded-full text-sm transition-all bg-teen-white border-2 border-teen-pink text-teen-brown flex items-center gap-1 shadow-sticker-hover">
+                        <i class="ph-bold ph-list-heart text-lg text-teen-pink"></i> 할일
+                    </button>
+                    <button id="btn-cal-view" class="p-2 px-3 rounded-full text-sm transition-all text-teen-brownLight hover:text-teen-brown flex items-center gap-1 border-2 border-transparent">
+                        <i class="ph-bold ph-calendar-star text-lg"></i> 달력
+                    </button>
+                </div>
+            </div>
+        </nav>
+
+        <!-- ================= CALENDAR VIEW ================= -->
+        <section id="view-calendar" class="view-section hidden-view flex-1 flex flex-col p-5 pt-3 h-full bg-teen-white overflow-y-auto">
+            <!-- Calendar Header -->
+            <div class="flex justify-between items-center mb-4 px-2 bg-teen-yellowLight p-3 border-3 border-teen-pink rounded-2xl shadow-sticker-hover">
+                <button id="prev-month" class="w-8 h-8 flex items-center justify-center rounded-full bg-white border-2 border-teen-pink text-teen-brown btn-sticker">
+                    <i class="ph-bold ph-caret-left"></i>
+                </button>
+                <h2 id="calendar-month-year" class="text-xl text-teen-brown">2026년 10월 🎀</h2>
+                <button id="next-month" class="w-8 h-8 flex items-center justify-center rounded-full bg-white border-2 border-teen-pink text-teen-brown btn-sticker">
+                    <i class="ph-bold ph-caret-right"></i>
+                </button>
+            </div>
+
+            <!-- Calendar Grid -->
+            <div class="flex-1 rounded-3xl flex flex-col">
+                <div class="grid grid-cols-7 gap-1 mb-2 text-center border-b-2 border-teen-pinkLight pb-2 font-bold">
+                    <div class="text-sm text-red-400">일</div>
+                    <div class="text-sm text-teen-brown">월</div>
+                    <div class="text-sm text-teen-brown">화</div>
+                    <div class="text-sm text-teen-brown">수</div>
+                    <div class="text-sm text-teen-brown">목</div>
+                    <div class="text-sm text-teen-brown">금</div>
+                    <div class="text-sm text-blue-400">토</div>
+                </div>
+                <div id="calendar-grid" class="grid grid-cols-7 gap-1.5 flex-1 content-start mt-1">
+                    <!-- Days dynamically rendered by JS -->
+                </div>
+            </div>
+            
+            <div class="mt-4 text-center">
+                <button id="btn-today" class="text-base text-teen-brown bg-teen-yellow btn-sticker px-6 py-2 rounded-full font-bold">
+                    오늘 날짜로 가기 ✨
+                </button>
+            </div>
+        </section>
+
+        <!-- ================= LIST VIEW ================= -->
+        <section id="view-list" class="view-section active-view flex-1 flex flex-col h-full overflow-hidden bg-teen-white">
+            
+            <!-- Date & Progress Header -->
+            <div class="px-5 pb-3 pt-3">
+                <div class="flex justify-between items-center mb-2">
+                    <p class="text-base text-teen-brown flex items-center gap-1.5 font-bold" id="current-date-display">
+                        <i class="ph-fill ph-calendar-heart text-teen-pink text-xl"></i> 2026년 10월 8일
+                    </p>
+                    <span id="day-badge" class="bg-teen-pinkLight border border-teen-pink px-2.5 py-0.5 rounded-full text-xs text-teen-brown">오늘</span>
+                </div>
+                
+                <!-- Progress indicator -->
+                <div class="bg-teen-yellowLight p-3.5 rounded-2xl border-3 border-teen-pink shadow-sticker">
+                    <div class="flex justify-between text-sm text-teen-brown mb-1.5 items-end">
+                        <span class="font-bold flex items-center gap-1">
+                            얼마나 달성했지? 
+                            <span id="progress-count" class="text-teen-pink bg-white px-2 py-0.5 rounded-full border-2 border-teen-pink text-xs ml-1">0/0</span>
+                        </span>
+                        <span id="progress-text" class="text-lg text-teen-pink font-bold">0%</span>
+                    </div>
+                    <div class="h-4 w-full bg-white rounded-full overflow-hidden border-2 border-teen-pink">
+                        <div id="progress-bar" class="h-full bg-teen-pink rounded-full transition-all duration-500 relative" style="width: 0%">
+                            <div class="absolute top-0.5 left-1 right-1 h-1 bg-white/40 rounded-full"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Input Form Area -->
+            <div class="px-5 py-1 z-10 relative">
+                <form id="todo-form" class="flex flex-col gap-2">
+                    <div class="flex items-center gap-2">
+                        <input 
+                            type="text" 
+                            id="todo-input" 
+                            class="w-full bg-white border-3 border-teen-pink text-teen-brown text-base rounded-2xl p-3 px-4 transition-all placeholder-teen-brownLight shadow-sticker focus:outline-none focus:shadow-sticker-lg" 
+                            placeholder="오늘 뭐할까? ✏️"
+                            autocomplete="off"
+                            required
+                        >
+                        <button type="submit" class="bg-teen-yellow text-teen-brown w-12 h-12 flex-shrink-0 flex items-center justify-center rounded-2xl btn-sticker text-2xl font-bold">
+                            <i class="ph-bold ph-plus"></i>
+                        </button>
+                    </div>
+
+                    <!-- Priority Selector (Optional Cute Tag) -->
+                    <div class="flex items-center gap-2 px-1 text-xs text-teen-brownLight">
+                        <span>중요도:</span>
+                        <label class="flex items-center gap-1 cursor-pointer">
+                            <input type="radio" name="priority" value="high" class="accent-pink-500">
+                            <span class="text-red-500 font-bold">❤️ 필수</span>
+                        </label>
+                        <label class="flex items-center gap-1 cursor-pointer">
+                            <input type="radio" name="priority" value="normal" checked class="accent-yellow-500">
+                            <span class="text-amber-600 font-bold">💛 보통</span>
+                        </label>
+                        <label class="flex items-center gap-1 cursor-pointer">
+                            <input type="radio" name="priority" value="low" class="accent-blue-500">
+                            <span class="text-blue-500 font-bold">💙 여유</span>
+                        </label>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Todo List Container -->
+            <div class="px-5 py-3 flex-1 overflow-y-auto" id="list-container">
+                <ul id="todo-list" class="space-y-1 pb-20">
+                    <!-- Dynamic tasks rendered here -->
+                </ul>
+                
+                <!-- Empty state -->
+                <div id="empty-state" class="hidden flex flex-col items-center justify-center h-full text-teen-brownLight py-12">
+                    <div class="text-6xl mb-3 animate-bounce">🧸</div>
+                    <p class="text-xl font-bold">할 일이 텅~ 비었어요!</p>
+                    <p class="text-sm mt-1">새로운 일정이나 하고 싶은 일을 적어보세요 ✨</p>
+                </div>
+            </div>
+            
+            <!-- Bottom Footer -->
+            <footer class="absolute bottom-0 w-full bg-teen-white border-t-4 border-teen-pink px-5 py-3 flex justify-between items-center text-sm text-teen-brown z-20">
+                <span id="tasks-left" class="bg-teen-pinkLight px-3 py-1 rounded-full border-2 border-teen-pink font-bold">0개 남음</span>
+                <button id="clear-completed" class="btn-sticker bg-teen-white px-3 py-1.5 rounded-xl text-red-400 flex items-center gap-1 font-bold hover:bg-red-50">
+                    <i class="ph-bold ph-eraser"></i> 완료한 일 정리
+                </button>
+            </footer>
+        </section>
+
+    </main>
+
+    <!-- Sync Room Key Modal -->
+    <div id="sync-modal" class="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white border-4 border-teen-pink rounded-3xl p-6 w-full max-w-sm shadow-sticker-lg relative flex flex-col gap-4">
+            <button id="close-sync-modal" class="absolute top-4 right-4 text-teen-brown hover:text-teen-pink text-2xl">
+                <i class="ph-bold ph-x"></i>
+            </button>
+            
+            <div class="text-center">
+                <div class="text-4xl mb-1">🔑</div>
+                <h3 class="text-xl font-bold text-teen-brown">인터넷 동기화 키 설정</h3>
+                <p class="text-xs text-teen-brownLight mt-1">스마트폰, 태블릿, PC 등 어디서나 동일한 키를 입력하면 내 다이어리를 불러옵니다.</p>
+            </div>
+
+            <div class="bg-teen-yellowLight p-3 rounded-2xl border-2 border-teen-pink text-xs text-teen-brown space-y-1">
+                <p>💡 <strong>사용 방법:</strong></p>
+                <p>• 나만의 비밀 키(예: <code>MY-DIARY-2026</code>)를 직접 만드세요.</p>
+                <p>• 다른 기기에서도 똑같은 키를 입력하면 실시간으로 연동됩니다.</p>
+            </div>
+
+            <form id="sync-form" class="flex flex-col gap-3">
+                <div>
+                    <label class="text-xs text-teen-brown font-bold mb-1 block">내 동기화 키 (Sync Code)</label>
+                    <input 
+                        type="text" 
+                        id="sync-key-input" 
+                        class="w-full bg-white border-2 border-teen-pink text-teen-brown font-bold text-center text-lg rounded-xl p-2.5 focus:outline-none focus:ring-2 focus:ring-teen-pink"
+                        placeholder="예: MY-DIARY-77"
+                        required
+                    >
+                </div>
+                
+                <div class="flex gap-2">
+                    <button type="button" id="btn-generate-key" class="flex-1 bg-teen-pinkLight border-2 border-teen-pink text-teen-brown py-2 rounded-xl text-xs font-bold btn-sticker">
+                        🎲 랜덤 생성
+                    </button>
+                    <button type="submit" class="flex-1 bg-teen-yellow border-2 border-teen-pink text-teen-brown py-2 rounded-xl text-xs font-bold btn-sticker">
+                        💾 연결하기
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, collection, onSnapshot, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'pastel-todo-app';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+            apiKey: "dummy-key",
+            authDomain: "dummy.firebaseapp.com",
+            projectId: "dummy-project",
+            storageBucket: "dummy.appspot.com",
+            messagingSenderId: "00000000000",
+            appId: "1:00000000000:web:00000000000"
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        let currentUser = null;
+        let activeRoomKey = localStorage.getItem('teen_sync_key') || generateDefaultRoomKey();
+        let todos = [];
+        let unsubscribeFirestore = null;
+
+        function generateDefaultRoomKey() {
+            const randomCode = 'DIARY-' + Math.floor(1000 + Math.random() * 9000);
+            localStorage.setItem('teen_sync_key', randomCode);
+            return randomCode;
+        }
+
+        // Helper for today string format YYYY-MM-DD in local time
+        const getTodayStr = () => {
+            const tzOffset = (new Date()).getTimezoneOffset() * 60000;
+            return (new Date(Date.now() - tzOffset)).toISOString().split('T')[0];
+        };
+
+        let currentDate = new Date(); 
+        let selectedDateStr = getTodayStr(); 
+
+        const syncStatusDot = document.getElementById('status-dot');
+        const syncStatusText = document.getElementById('status-text');
+        const syncCodeDisplay = document.getElementById('sync-code-display');
+        const syncModal = document.getElementById('sync-modal');
+        const btnSyncKey = document.getElementById('btn-sync-key');
+        const closeSyncModal = document.getElementById('close-sync-modal');
+        const syncForm = document.getElementById('sync-form');
+        const syncKeyInput = document.getElementById('sync-key-input');
+        const btnGenerateKey = document.getElementById('btn-generate-key');
+
+        const viewListBtn = document.getElementById('btn-list-view');
+        const viewCalBtn = document.getElementById('btn-cal-view');
+        const sectionList = document.getElementById('view-list');
+        const sectionCal = document.getElementById('view-calendar');
+        const mainTitle = document.getElementById('main-title');
+
+        const calMonthYear = document.getElementById('calendar-month-year');
+        const calGrid = document.getElementById('calendar-grid');
+        const btnPrevMonth = document.getElementById('prev-month');
+        const btnNextMonth = document.getElementById('next-month');
+        const btnToday = document.getElementById('btn-today');
+
+        const form = document.getElementById('todo-form');
+        const input = document.getElementById('todo-input');
+        const list = document.getElementById('todo-list');
+        const emptyState = document.getElementById('empty-state');
+        const dateDisplay = document.getElementById('current-date-display');
+        const dayBadge = document.getElementById('day-badge');
+        const progressBar = document.getElementById('progress-bar');
+        const progressText = document.getElementById('progress-text');
+        const tasksLeftDisplay = document.getElementById('tasks-left');
+        const clearCompletedBtn = document.getElementById('clear-completed');
+        const progressCountDisplay = document.getElementById('progress-count');
+
+        const playPopSound = () => {
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
+                osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.1); // A5
+                gain.gain.setValueAtTime(0.15, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start();
+                osc.stop(ctx.currentTime + 0.1);
+            } catch(e) {}
+        };
+
+        const playCompleteSound = () => {
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+                notes.forEach((freq, idx) => {
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.frequency.setValueAtTime(freq, ctx.currentTime + idx * 0.08);
+                    gain.gain.setValueAtTime(0.12, ctx.currentTime + idx * 0.08);
+                    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + idx * 0.08 + 0.2);
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.start(ctx.currentTime + idx * 0.08);
+                    osc.stop(ctx.currentTime + idx * 0.08 + 0.2);
+                });
+            } catch(e) {}
+        };
+
+        const updateSyncUI = (status, code) => {
+            syncCodeDisplay.textContent = code;
+            if (status === 'connected') {
+                syncStatusDot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-500';
+                syncStatusText.textContent = '실시간 연동됨';
+            } else if (status === 'connecting') {
+                syncStatusDot.className = 'w-2.5 h-2.5 rounded-full bg-yellow-400 animate-pulse';
+                syncStatusText.textContent = '클라우드 연결중...';
+            } else {
+                syncStatusDot.className = 'w-2.5 h-2.5 rounded-full bg-red-400';
+                syncStatusText.textContent = '오프라인 저장 모드';
+            }
+        };
+
+        // Subscribe to Firestore changes for active sync room
+        const subscribeToCloudData = () => {
+            if (unsubscribeFirestore) {
+                unsubscribeFirestore();
+            }
+
+            updateSyncUI('connecting', activeRoomKey);
+
+            if (!currentUser) {
+                console.warn("User not logged in yet");
+                return;
+            }
+
+            // Path adhering strictly to Rule 1 for public/shared data rooms
+            const roomDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', activeRoomKey);
+
+            unsubscribeFirestore = onSnapshot(roomDocRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    todos = data.todos || [];
+                } else {
+                    // Create initial room doc if not exists
+                    setDoc(roomDocRef, { todos: [], updatedAt: Date.now() }, { merge: true });
+                    todos = [];
+                }
+                updateSyncUI('connected', activeRoomKey);
+                renderCurrentView();
+            }, (error) => {
+                console.error("Firestore error:", error);
+                updateSyncUI('error', activeRoomKey);
+                // Fallback to local storage if network or permission error
+                const stored = localStorage.getItem(`teen_todos_${activeRoomKey}`);
+                if (stored) todos = JSON.parse(stored);
+                renderCurrentView();
+            });
+        };
+
+        const saveTodos = async () => {
+            // Always save to local backup first
+            localStorage.setItem(`teen_todos_${activeRoomKey}`, JSON.stringify(todos));
+
+            if (!currentUser) return;
+
+            try {
+                const roomDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', activeRoomKey);
+                await setDoc(roomDocRef, {
+                    todos: todos,
+                    updatedAt: Date.now()
+                }, { merge: true });
+            } catch (err) {
+                console.error("Cloud save failed:", err);
+            }
+
+            updateListStats();
+            if (sectionCal.classList.contains('active-view')) {
+                renderCalendar(); 
+            }
+        };
+
+        const initAuth = async () => {
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (e) {
+                console.error("Auth error:", e);
+            }
+        };
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                currentUser = user;
+                subscribeToCloudData();
+            }
+        });
+
+        btnSyncKey.addEventListener('click', () => {
+            syncKeyInput.value = activeRoomKey;
+            syncModal.classList.remove('hidden');
+        });
+
+        closeSyncModal.addEventListener('click', () => {
+            syncModal.classList.add('hidden');
+        });
+
+        btnGenerateKey.addEventListener('click', () => {
+            syncKeyInput.value = 'DIARY-' + Math.floor(1000 + Math.random() * 9000);
+        });
+
+        syncForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const newKey = syncKeyInput.value.trim().toUpperCase();
+            if (newKey) {
+                activeRoomKey = newKey;
+                localStorage.setItem('teen_sync_key', activeRoomKey);
+                syncModal.classList.add('hidden');
+                subscribeToCloudData();
+            }
+        });
+
+        const formatDateToString = (date) => {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        };
+
+        const switchView = (view) => {
+            if (view === 'list') {
+                sectionCal.classList.remove('active-view');
+                sectionCal.classList.add('hidden-view');
+                sectionList.classList.remove('hidden-view');
+                sectionList.classList.add('active-view');
+                
+                viewListBtn.className = 'p-2 px-3 rounded-full text-sm transition-all bg-teen-white border-2 border-teen-pink text-teen-brown flex items-center gap-1 shadow-sticker-hover font-bold';
+                viewListBtn.innerHTML = '<i class="ph-bold ph-list-heart text-lg text-teen-pink"></i> 할일';
+                
+                viewCalBtn.className = 'p-2 px-3 rounded-full text-sm transition-all text-teen-brownLight hover:text-teen-brown flex items-center gap-1 border-2 border-transparent';
+                viewCalBtn.innerHTML = '<i class="ph-bold ph-calendar-star text-lg"></i> 달력';
+                
+                renderList();
+            } else if (view === 'calendar') {
+                sectionList.classList.remove('active-view');
+                sectionList.classList.add('hidden-view');
+                sectionCal.classList.remove('hidden-view');
+                sectionCal.classList.add('active-view');
+                
+                viewCalBtn.className = 'p-2 px-3 rounded-full text-sm transition-all bg-teen-white border-2 border-teen-pink text-teen-brown flex items-center gap-1 shadow-sticker-hover font-bold';
+                viewCalBtn.innerHTML = '<i class="ph-bold ph-calendar-star text-lg text-teen-pink"></i> 달력';
+                
+                viewListBtn.className = 'p-2 px-3 rounded-full text-sm transition-all text-teen-brownLight hover:text-teen-brown flex items-center gap-1 border-2 border-transparent';
+                viewListBtn.innerHTML = '<i class="ph-bold ph-list-heart text-lg"></i> 할일';
+                
+                renderCalendar();
+            }
+        };
+
+        viewListBtn.addEventListener('click', () => switchView('list'));
+        viewCalBtn.addEventListener('click', () => switchView('calendar'));
+
+        const renderCurrentView = () => {
+            if (sectionCal.classList.contains('active-view')) {
+                renderCalendar();
+            } else {
+                renderList();
+            }
+        };
+
+        const renderCalendar = () => {
+            calGrid.innerHTML = '';
+            
+            const year = currentDate.getFullYear();
+            const month = currentDate.getMonth(); 
+            
+            calMonthYear.textContent = `${year}년 ${month + 1}월 🎀`;
+            
+            const firstDayOfMonth = new Date(year, month, 1).getDay(); 
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            
+            for (let i = 0; i < firstDayOfMonth; i++) {
+                const emptyDiv = document.createElement('div');
+                calGrid.appendChild(emptyDiv);
+            }
+            
+            const todayStr = getTodayStr();
+
+            for (let day = 1; day <= daysInMonth; day++) {
+                const dayDate = new Date(year, month, day);
+                const dayStr = formatDateToString(dayDate);
+                
+                const dayDiv = document.createElement('div');
+                dayDiv.className = `calendar-day h-12 flex flex-col items-center justify-center rounded-2xl relative bg-white border-2 border-teen-pinkLight shadow-sm`;
+                
+                if (dayStr === todayStr) dayDiv.classList.add('today');
+                if (dayStr === selectedDateStr) dayDiv.classList.add('selected');
+                
+                const dayNum = document.createElement('span');
+                dayNum.className = 'text-sm font-bold z-10';
+                dayNum.textContent = day;
+                dayDiv.appendChild(dayNum);
+                
+                const dayTodos = todos.filter(t => t.date === dayStr);
+                if (dayTodos.length > 0) {
+                    const dotsContainer = document.createElement('div');
+                    dotsContainer.className = 'flex gap-1 mt-0.5 z-10 items-center';
+                    
+                    const maxDots = Math.min(dayTodos.length, 3);
+                    for(let i = 0; i < maxDots; i++) {
+                        const dot = document.createElement('div');
+                        dot.className = `w-2 h-2 rounded-full border border-white ${dayTodos[i].completed ? 'bg-teen-brownLight' : 'bg-teen-pink'}`;
+                        dotsContainer.appendChild(dot);
+                    }
+                    if(dayTodos.length > 3) {
+                        const plus = document.createElement('span');
+                        plus.className = 'text-[10px] leading-[8px] text-teen-pink font-bold';
+                        plus.textContent = '+';
+                        dotsContainer.appendChild(plus);
+                    }
+                    dayDiv.appendChild(dotsContainer);
+                }
+
+                dayDiv.addEventListener('click', () => {
+                    selectedDateStr = dayStr;
+                    switchView('list');
+                });
+                
+                calGrid.appendChild(dayDiv);
+            }
+        };
+
+        btnPrevMonth.addEventListener('click', () => { currentDate.setMonth(currentDate.getMonth() - 1); renderCalendar(); });
+        btnNextMonth.addEventListener('click', () => { currentDate.setMonth(currentDate.getMonth() + 1); renderCalendar(); });
+        btnToday.addEventListener('click', () => { currentDate = new Date(); selectedDateStr = getTodayStr(); renderCalendar(); switchView('list'); });
+
+        let hasTriggered100Percent = false;
+
+        const updateListStats = () => {
+            const dayTodos = todos.filter(t => t.date === selectedDateStr);
+            const total = dayTodos.length;
+            const completed = dayTodos.filter(todo => todo.completed).length;
+            const pending = total - completed;
+
+            tasksLeftDisplay.textContent = `${pending}개 남음 화이팅!`;
+
+            const percentage = total === 0 ? 0 : Math.round((completed / total) * 100);
+            progressBar.style.width = `${percentage}%`;
+            
+            progressCountDisplay.textContent = `${completed}/${total}`;
+            progressText.textContent = `${percentage}%`;
+            
+            if (percentage === 100 && total > 0) {
+                progressBar.classList.replace('bg-teen-pink', 'bg-teen-yellow');
+                progressText.textContent = `완벽해! 🌟`;
+                
+                if (!hasTriggered100Percent) {
+                    hasTriggered100Percent = true;
+                    playCompleteSound();
+                    if (typeof confetti === 'function') {
+                        confetti({
+                            particleCount: 60,
+                            spread: 60,
+                            origin: { y: 0.7 },
+                            colors: ['#FF8FAB', '#FCE181', '#B8E9C4']
+                        });
+                    }
+                }
+            } else {
+                hasTriggered100Percent = false;
+                progressBar.classList.replace('bg-teen-yellow', 'bg-teen-pink');
+            }
+
+            if (total === 0) {
+                list.classList.add('hidden');
+                emptyState.classList.remove('hidden');
+            } else {
+                list.classList.remove('hidden');
+                emptyState.classList.add('hidden');
+            }
+        };
+
+        const escapeHTML = (str) => {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        };
+
+        const createTodoElement = (todo) => {
+            const li = document.createElement('li');
+            li.className = `todo-item rounded-2xl p-3 pl-2 flex items-center gap-2 group relative ${todo.completed ? 'completed' : ''}`;
+            li.dataset.id = todo.id;
+
+            const checkIcon = todo.completed 
+                ? `<i class="ph-fill ph-star text-2xl text-teen-pink"></i>`
+                : `<i class="ph-bold ph-circle text-2xl text-teen-pinkLight"></i>`;
+
+            let priorityBadge = '';
+            if (todo.priority === 'high') {
+                priorityBadge = '<span class="text-xs text-red-500 font-bold bg-red-50 border border-red-200 px-1.5 py-0.5 rounded-md">❤️ 필수</span>';
+            } else if (todo.priority === 'low') {
+                priorityBadge = '<span class="text-xs text-blue-500 font-bold bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded-md">💙 여유</span>';
+            }
+
+            li.innerHTML = `
+                <div class="drag-handle px-1 py-3 text-teen-pink hover:text-teen-brown transition-colors">
+                    <i class="ph-bold ph-dots-six-vertical text-xl"></i>
+                </div>
+                
+                <button class="check-btn flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-full transition-all hover:scale-110 active:scale-95" title="완료 체크">
+                    ${checkIcon}
+                </button>
+                
+                <div class="flex-1 flex flex-col ml-1">
+                    <span class="todo-text text-base font-bold break-all pt-0.5">${escapeHTML(todo.text)}</span>
+                    ${priorityBadge ? `<div class="mt-0.5">${priorityBadge}</div>` : ''}
+                </div>
+                
+                <button class="delete-btn btn-sticker bg-white flex items-center justify-center w-9 h-9 rounded-xl text-red-400 hover:bg-red-50 transition-all opacity-100 sm:opacity-0 sm:group-hover:opacity-100" title="삭제">
+                    <i class="ph-bold ph-trash text-lg"></i>
+                </button>
+            `;
+
+            // Toggle completion listener
+            const checkBtn = li.querySelector('.check-btn');
+            checkBtn.addEventListener('click', () => {
+                todo.completed = !todo.completed;
+                if (todo.completed) playPopSound();
+                saveTodos();
+                renderList();
+            });
+
+            // Delete item listener
+            const deleteBtn = li.querySelector('.delete-btn');
+            deleteBtn.addEventListener('click', () => {
+                li.style.transform = 'scale(0.8) rotate(-10deg)';
+                li.style.opacity = '0';
+                setTimeout(() => {
+                    todos = todos.filter(t => t.id !== todo.id);
+                    saveTodos();
+                    renderList();
+                }, 200);
+            });
+
+            return li;
+        };
+
+        const renderList = () => {
+            const options = { year: 'numeric', month: 'short', day: 'numeric', weekday: 'short' };
+            const selectedDateObj = new Date(selectedDateStr + 'T00:00:00');
+            const isToday = selectedDateStr === getTodayStr();
+            
+            mainTitle.innerHTML = isToday ? "🧸 오늘의 다이어리" : "🎀 그날의 기록";
+            dateDisplay.innerHTML = `<i class="ph-fill ph-calendar-heart text-xl text-teen-pink"></i> ${selectedDateObj.toLocaleDateString('ko-KR', options)}`;
+            
+            if (isToday) {
+                dayBadge.textContent = '오늘';
+                dayBadge.className = 'bg-teen-pinkLight border border-teen-pink px-2.5 py-0.5 rounded-full text-xs font-bold text-teen-brown';
+            } else {
+                dayBadge.textContent = selectedDateStr;
+                dayBadge.className = 'bg-teen-yellowLight border border-teen-pink px-2.5 py-0.5 rounded-full text-xs font-bold text-teen-brown';
+            }
+
+            list.innerHTML = '';
+            
+            let dayTodos = todos.filter(t => t.date === selectedDateStr);
+            
+            dayTodos.forEach(todo => {
+                list.appendChild(createTodoElement(todo));
+            });
+            
+            updateListStats();
+        };
+
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const text = input.value.trim();
+            const priorityEl = form.querySelector('input[name="priority"]:checked');
+            const priority = priorityEl ? priorityEl.value : 'normal';
+            
+            if (text) {
+                const newTodo = {
+                    id: Date.now().toString(),
+                    text: text,
+                    completed: false,
+                    priority: priority,
+                    date: selectedDateStr,
+                    createdAt: Date.now()
+                };
+                
+                todos.push(newTodo);
+                playPopSound();
+                saveTodos();
+                
+                const newElement = createTodoElement(newTodo);
+                newElement.style.opacity = '0';
+                newElement.style.transform = 'translateY(-20px) scale(0.9)';
+                list.appendChild(newElement);
+                
+                void newElement.offsetWidth;
+                
+                newElement.style.opacity = '1';
+                newElement.style.transform = 'translateY(0) scale(1)';
+                
+                input.value = '';
+                updateListStats();
+                
+                setTimeout(() => {
+                    const container = document.getElementById('list-container');
+                    container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+                }, 100);
+            }
+        });
+
+        clearCompletedBtn.addEventListener('click', () => {
+            const items = list.querySelectorAll('.todo-item.completed');
+            if (items.length === 0) return;
+
+            items.forEach(item => {
+                item.style.transform = 'scale(0.8) rotate(10deg)';
+                item.style.opacity = '0';
+            });
+
+            setTimeout(() => {
+                todos = todos.filter(todo => !(todo.date === selectedDateStr && todo.completed));
+                saveTodos();
+                renderList();
+            }, 250);
+        });
+
+        new Sortable(list, {
+            animation: 250,
+            ghostClass: 'sortable-ghost',
+            handle: '.drag-handle',
+            onEnd: function () {
+                const currentDayListIds = Array.from(list.querySelectorAll('.todo-item')).map(el => el.dataset.id);
+                
+                const otherDaysTodos = todos.filter(t => t.date !== selectedDateStr);
+                const currentDayTodosMap = new Map();
+                todos.filter(t => t.date === selectedDateStr).forEach(t => currentDayTodosMap.set(t.id, t));
+                
+                const newCurrentDayTodos = currentDayListIds.map(id => currentDayTodosMap.get(id)).filter(Boolean);
+                
+                todos = [...otherDaysTodos, ...newCurrentDayTodos];
+                saveTodos();
+            },
+        });
+
+        window.addEventListener('DOMContentLoaded', () => {
+            initAuth();
+            switchView('list');
+        });
+    </script>
+</body>
+</html>
